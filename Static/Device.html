@@ -1,1 +1,23 @@
-
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RemoteLab / Laptop</title>
+<style>
+body{margin:0;background:#091321;color:#e8f1fb;font:15px system-ui;padding:24px}.wrap{max-width:650px;margin:auto}.card{background:#122238;border:1px solid #29415c;border-radius:16px;padding:20px;margin:14px 0}.muted{color:#9bb0c8}.code{font-size:30px;letter-spacing:7px;color:#42e8d1;font-weight:800}.request{border:1px solid #29415c;border-radius:12px;padding:13px;margin:10px 0}.row{display:flex;gap:10px}button{padding:11px 15px;border:0;border-radius:9px;font-weight:700;cursor:pointer}.yes{background:#42e8d1;color:#05201e}.no{background:#513040;color:#ffe4eb}.msg{padding:10px;background:#091321;border-radius:9px;margin:8px 0;overflow-wrap:anywhere}h1{margin-bottom:4px}small{color:#9bb0c8}
+</style></head><body><div class="wrap">
+<h1>◈ RemoteLab / Laptop</h1><p class="muted">Visible device console — keep this page open while testing.</p>
+<div class="card"><small>THIS DEVICE</small><h2 id="device">Loading…</h2><small>PAIRING CODE — share only with your own phone</small><div class="code" id="code">------</div><p class="muted">On your iPhone, open the dashboard address printed in the laptop terminal and enter this code. Approve each request here.</p></div>
+<div class="card"><h3>Connection requests</h3><div id="requests" class="muted">No pending requests.</div></div>
+<div class="card"><h3>Incoming messages</h3><div id="inbox" class="muted">Messages from your phone will appear here.</div></div>
+<p class="muted"><small>To stop RemoteLab completely, close this browser tab and press Ctrl+C in the laptop terminal.</small></p>
+</div>
+<script>
+const $=id=>document.getElementById(id);let seen=new Set();
+async function get(url){const r=await fetch(url);return r.json()}
+async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json()}
+async function init(){try{const d=await get('/api/info');$('device').textContent=d.device; // code is printed in terminal, not exposed to phone-facing endpoint
+}catch(e){}}
+async function poll(){try{const d=await get('/api/pending');$('requests').innerHTML='';if(!d.requests.length){$('requests').textContent='No pending requests.'}for(const r of d.requests){const box=document.createElement('div');box.className='request';const p=document.createElement('p');p.textContent='A phone is requesting to pair with this laptop.';const row=document.createElement('div');row.className='row';const yes=document.createElement('button');yes.className='yes';yes.textContent='Approve';yes.onclick=async()=>{await post('/api/approve',{id:r.id});box.textContent='Approved. The phone is now paired.'};const no=document.createElement('button');no.className='no';no.textContent='Decline';no.onclick=async()=>{await post('/api/deny',{id:r.id});box.textContent='Declined.'};row.append(yes,no);box.append(p,row);$('requests').append(box)}}catch(e){}setTimeout(poll,1800)}
+let last='';
+async function inbox(){try{const r=await fetch('/api/messages?after='+encodeURIComponent(last));if(r.status===401){setTimeout(inbox,2500);return}const d=await r.json();for(const m of d.messages){last=m.id;const el=document.createElement('div');el.className='msg';el.textContent=m.time+'  ·  '+m.text;$('inbox').prepend(el);if('Notification'in window&&Notification.permission==='granted')new Notification('RemoteLab message',{body:m.text})}}catch(e){}setTimeout(inbox,2500)}
+if('Notification'in window&&Notification.permission==='default')Notification.requestPermission();
+init();poll();inbox();
+</script></body></html>
