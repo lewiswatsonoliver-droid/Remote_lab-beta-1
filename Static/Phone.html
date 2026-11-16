@@ -1,1 +1,67 @@
-
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#07111f"><title>RemoteLab / Controller</title>
+<style>
+:root{color-scheme:dark;--bg:#07111f;--panel:#101e30;--panel2:#14263b;--line:#203650;--muted:#8ea5bf;--text:#e8f1fb;--cyan:#42e8d1;--green:#58e39a;--red:#ff7185}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#112944 0,#07111f 52%);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text);min-height:100vh}
+main{max-width:760px;margin:auto;padding:22px 16px 48px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.brand{font-weight:850;letter-spacing:2px;font-size:18px}.brand b{color:var(--cyan)}.tag{font-size:11px;color:var(--cyan);border:1px solid #23675f;border-radius:99px;padding:5px 9px;letter-spacing:1px}
+h1{font-size:27px;line-height:1.15;margin:0 0 8px}.sub{color:var(--muted);margin:0 0 22px}
+.card{background:linear-gradient(145deg,#12243a,#0d1929);border:1px solid var(--line);border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 12px 35px #0003}
+.label{color:var(--muted);font-size:11px;letter-spacing:1.5px;font-weight:750}.device{font-size:20px;font-weight:750;margin:5px 0 3px}.status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}.dot{width:8px;height:8px;border-radius:50%;background:#64748b;display:inline-block}.dot.on{background:var(--green);box-shadow:0 0 12px #58e39a88}
+input,textarea{width:100%;background:#071321;border:1px solid #29415c;border-radius:11px;color:var(--text);padding:13px;font:inherit;outline:none}input:focus,textarea:focus{border-color:var(--cyan)}
+button{border:0;border-radius:11px;padding:12px 15px;font:700 14px system-ui;cursor:pointer}
+.primary{background:var(--cyan);color:#05201e}.secondary{background:#20344c;color:var(--text)}.danger{background:#482333;color:#ffdce2}.full{width:100%;margin-top:10px}
+.row{display:flex;gap:9px}.row>*{flex:1}.hidden{display:none!important}
+.msg{background:#071321;border:1px solid #1e344b;border-radius:12px;padding:11px;margin:8px 0;color:#dce9f8;overflow-wrap:anywhere}
+.file{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #203650}.file:last-child{border:0}.muted{color:var(--muted);font-size:12px}
+.notice{color:#f3cf87;background:#392f1c;border:1px solid #69552b;border-radius:12px;padding:11px;font-size:12px}
+footer{text-align:center;color:#607992;font-size:11px;margin-top:22px}
+</style></head>
+<body><main>
+<div class="top"><div class="brand">◈ <b>REMOTE</b>LAB</div><div class="tag">LOCAL CONTROL</div></div>
+<h1>Device console</h1><p class="sub">A consent-based controller for your own test laptop.</p>
+<section id="pairCard" class="card">
+ <div class="label">PAIR NEW DEVICE</div><p class="muted">Open RemoteLab on the Lenovo, then enter the six-digit code shown in its terminal. The laptop user must approve the request on the laptop.</p>
+ <input id="code" inputmode="numeric" maxlength="6" placeholder="6-digit pairing code">
+ <button class="primary full" onclick="pair()">Request connection</button><p id="pairMsg" class="muted" aria-live="polite"></p>
+</section>
+<section id="dashboard" class="hidden">
+ <div class="card">
+  <div class="label">CONNECTED DEVICE</div><div id="device" class="device">—</div>
+  <div class="status"><span class="dot on"></span><span>Paired · local network</span></div>
+  <p class="muted">Connection is visible on the laptop. Stop the server on the laptop to end access completely.</p>
+ </div>
+ <div class="card">
+  <div class="label">MESSAGE TERMINAL</div><div id="messages"><p class="muted">Messages sent from here appear in the RemoteLab device page on the laptop.</p></div>
+  <textarea id="message" rows="2" maxlength="300" placeholder="Type a message…"></textarea>
+  <button class="primary full" onclick="sendMessage()">Send message</button>
+ </div>
+ <div class="card">
+  <div class="label">APPROVED TEST FILES</div><p class="muted">Only filenames in the laptop's dedicated RemoteLab_Shared folder are listed. This demo does not open or download files.</p>
+  <div id="files" class="muted">Loading…</div>
+  <button class="secondary full" onclick="loadFiles()">Refresh file list</button>
+ </div>
+ <div class="card">
+  <div class="label">LIVE SCREEN</div><p class="muted">For screen viewing and mouse/keyboard control, use the separately installed, visible remote-desktop app on your own devices.</p>
+  <button class="secondary full" onclick="window.open('https://remotedesktop.google.com/access','_blank')">Open Chrome Remote Desktop</button>
+ </div>
+ <button class="danger full" onclick="disconnect()">Disconnect this phone</button>
+</section>
+<div class="notice">Safety: this demo requires a pairing code and approval on the laptop. It does not run hidden, execute commands, capture the screen, or access files outside the approved folder.</div>
+<footer>REMOTELAB // SCHOOL CYBERSECURITY DEMO</footer>
+</main>
+<script>
+let token=localStorage.getItem('remotelab_token')||'', lastMessage='';
+const $=id=>document.getElementById(id);
+async function api(path,opts={}){opts.headers={...(opts.headers||{}),'Content-Type':'application/json',...(token?{'X-RemoteLab-Token':token}:{})};const r=await fetch(path,opts);const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d}
+function showDashboard(name){$('pairCard').classList.add('hidden');$('dashboard').classList.remove('hidden');$('device').textContent=name||'Remote device';loadFiles();pollMessages()}
+async function pair(){const code=$('code').value.trim();$('pairMsg').textContent='Requesting approval…';try{const d=await api('/api/pair',{method:'POST',body:JSON.stringify({code})});$('pairMsg').textContent='Request sent. Approve it on the Lenovo.';let n=0;const timer=setInterval(async()=>{n++;try{const s=await api('/api/pair-status?id='+encodeURIComponent(d.request_id));if(s.status==='approved'){clearInterval(timer);token=s.token;localStorage.setItem('remotelab_token',token);showDashboard(s.device)}else if(s.status==='denied'||s.status==='expired'||n>100){clearInterval(timer);$('pairMsg').textContent='Request '+s.status+'. Try again.'}}catch(e){clearInterval(timer);$('pairMsg').textContent=e.message}},1500)}catch(e){$('pairMsg').textContent=e.message}}
+async function sendMessage(){const message=$('message').value.trim();if(!message)return;try{await api('/api/message',{method:'POST',body:JSON.stringify({message})});$('message').value='';const el=document.createElement('div');el.className='msg';el.textContent='YOU  ·  '+message;$('messages').append(el)}catch(e){alert(e.message)}}
+async function loadFiles(){try{const d=await api('/api/files');$('files').innerHTML='';if(!d.files.length){$('files').textContent='No files in RemoteLab_Shared yet.';return}for(const f of d.files){const row=document.createElement('div');row.className='file';const name=document.createElement('span');name.textContent='▤  '+f.name;const size=document.createElement('span');size.className='muted';size.textContent=f.bytes+' bytes';row.append(name,size);$('files').append(row)}}catch(e){$('files').textContent=e.message}}
+async function pollMessages(){try{const d=await api('/api/messages?after='+encodeURIComponent(lastMessage));for(const m of d.messages){lastMessage=m.id;const el=document.createElement('div');el.className='msg';el.textContent=m.time+'  ·  '+m.text;$('messages').append(el)}}catch(e){}setTimeout(pollMessages,2500)}
+async function disconnect(){try{await api('/api/disconnect',{method:'POST',body:'{}'})}catch(e){}localStorage.removeItem('remotelab_token');token='';location.reload()}
+if(token){api('/api/status').then(d=>showDashboard(d.device)).catch(()=>{localStorage.removeItem('remotelab_token');token=''})}
+</script></body></html>
